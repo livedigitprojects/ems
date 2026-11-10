@@ -4,6 +4,34 @@ import LeaveApplication     from "../models/LeaveApplication.js"
 import Attendance           from "../models/Attendance.js"
 import LateRegularization   from "../models/LateRegularization.js"
 import { createNotification } from "./notificationController.js"
+import { getHolidayMapForMonth } from "../utils/attendanceConfig.js"
+import { buildPayslipWorkbookBuffer } from "../utils/payslipExcel.js"
+
+// --- Month filter (admin payslip list + Excel export share this) -------------
+// Accepts ?from=YYYY-MM&to=YYYY-MM (either may be omitted: one month only).
+const MONTH_KEY_RE = /^(\d{4})-(0[1-9]|1[0-2])$/
+const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+const periodExpr   = { $add: [{ $multiply: ["$year", 100] }, "$month"] }
+
+const parsePeriodFilter = (query) => {
+    const { from, to } = query
+    if (!from && !to) return { filter: {}, label: "All periods", slug: "all" }
+
+    const f = MONTH_KEY_RE.exec(from || to)
+    const m2 = MONTH_KEY_RE.exec(to || from)
+    if (!f || !m2) return { error: "Invalid period. Use YYYY-MM for 'from' and 'to'." }
+
+    const fromKey = Number(f[1]) * 100 + Number(f[2])
+    const toKey   = Number(m2[1]) * 100 + Number(m2[2])
+    if (fromKey > toKey) return { error: "'From' month must not be after 'To' month" }
+
+    const lbl = (m) => `${MONTH_LABELS[Number(m[2]) - 1]} ${m[1]}`
+    return {
+        filter: { $expr: { $and: [{ $gte: [periodExpr, fromKey] }, { $lte: [periodExpr, toKey] }] } },
+        label:  fromKey === toKey ? lbl(f) : `${lbl(f)} - ${lbl(m2)}`,
+        slug:   fromKey === toKey ? `${f[1]}-${f[2]}` : `${f[1]}-${f[2]}_to_${m2[1]}-${m2[2]}`,
+    }
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000
@@ -68,8 +96,11 @@ const toISTDateStr = (utcDate) =>
  * because presentDays is lower. No separate lopAmount deduction.
  */
 export const getMonthCounts = async (employeeId, month, year, weekOff = []) => {
-    const workingDates = getWorkingDatesOfMonth(month, year, weekOff)
-    const workingDays  = getWorkingDays(month, year, weekOff)
+    // Company holidays are paid non-working days: drop them from the working-day
+    // universe so they are never counted as absences (or in the salary denominator).
+    const holidayMap   = await getHolidayMapForMonth(year, month)
+    const workingDates = getWorkingDatesOfMonth(month, year, weekOff).filter((d) => !holidayMap[d])
+    const workingDays  = Math.max(1, workingDates.length)
 
     const monthStart = new Date(year, month - 1, 1)
     const monthEnd   = new Date(year, month, 0, 23, 59, 59)
@@ -296,7 +327,10 @@ export const getPayslips = async (req, res) => {
         const isAdmin = req.session.role === "ADMIN"
 
         if (isAdmin) {
-            const payslips = await Payslip.find()
+            const { filter, error } = parsePeriodFilter(req.query)
+            if (error) return res.status(400).json({ error })
+
+            const payslips = await Payslip.find(filter)
                 .populate("employeeId", "firstName lastName email position department joinDate isDeleted employeeId")
                 .sort({ createdAt: -1 })
 
@@ -326,6 +360,39 @@ export const getPayslips = async (req, res) => {
     } catch (error) {
         console.error("getPayslips error:", error)
         return res.status(500).json({ error: "Failed to fetch payslips" })
+    }
+}
+
+// --- Export filtered payslips to Excel (admin) --------------------------------
+export const exportPayslips = async (req, res) => {
+    try {
+        const { filter, error, label, slug } = parsePeriodFilter(req.query)
+        if (error) return res.status(400).json({ error })
+
+        const docs = await Payslip.find(filter)
+            .populate("employeeId", "firstName lastName position department employeeId isDeleted")
+            .lean()
+
+        // Same visibility rule as the on-screen list: skip deactivated employees.
+        const rows = docs
+            .filter((p) => p.employeeId && !p.employeeId.isDeleted)
+            .map((p) => ({ ...p, employee: p.employeeId }))
+            .sort((a, b) =>
+                (a.year - b.year) || (a.month - b.month) ||
+                `${a.employee.firstName} ${a.employee.lastName}`.localeCompare(`${b.employee.firstName} ${b.employee.lastName}`)
+            )
+
+        if (!rows.length)
+            return res.status(404).json({ error: "No payslips match the selected filters" })
+
+        const buffer = await buildPayslipWorkbookBuffer(rows, { periodLabel: label })
+
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        res.setHeader("Content-Disposition", `attachment; filename="payslips_${slug}.xlsx"`)
+        return res.send(buffer)
+    } catch (error) {
+        console.error("exportPayslips error:", error)
+        return res.status(500).json({ error: "Failed to export payslips" })
     }
 }
 

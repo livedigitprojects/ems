@@ -3,7 +3,7 @@ import Attendance        from "../models/Attendance.js"
 import Employee          from "../models/Employee.js"
 import LeaveApplication  from "../models/LeaveApplication.js"
 import User              from "../models/User.js"
-import { OFFICE_LOCATIONS } from "../constants/offices.js"
+import { getOfficeByKey, getHolidayMap } from "../utils/attendanceConfig.js"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -15,15 +15,11 @@ const countDays = (start, end) =>
  * Resolve assignedLocation from the request body.
  * Only the office key is persisted — coordinates live in constants/offices.js.
  */
-const resolveAssignedLocation = (assignedLocation) => {
-    const office = assignedLocation?.office || null
-    if (!office || !OFFICE_LOCATIONS[office]) {
-        return { office: null, label: "" }
-    }
-    return {
-        office,
-        label: OFFICE_LOCATIONS[office].label,
-    }
+const resolveAssignedLocation = async (assignedLocation) => {
+    const key    = assignedLocation?.office || null
+    const office = key ? await getOfficeByKey(key) : null
+    if (!office) return { office: null, label: "" }
+    return { office: office.key, label: office.label }
 }
 
 // ─── GET ALL EMPLOYEES ────────────────────────────────────────────────────────
@@ -178,15 +174,25 @@ export const getEmployeeDetail = async (req, res) => {
             monthRecords.map(r => new Date(r.date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10))
         )
 
-        // Count working days this month up to today
+        // Company holidays this month — never counted as working days / absences
+        const holidayMap = await getHolidayMap(monthStartUTC, monthEndUTC)
+
+        // Count working days this month up to today (excluding week-offs and holidays)
         let workingDayCount = 0
         const monthStart = new Date(Date.UTC(curYear, curMonth, 1))
         for (let d = new Date(monthStart); d.toISOString().slice(0, 10) <= todayStr; d.setUTCDate(d.getUTCDate() + 1)) {
             const istD = new Date(d.getTime() + IST_OFFSET_MS)
-            if (!offIndices.has(istD.getUTCDay())) workingDayCount++
+            if (offIndices.has(istD.getUTCDay())) continue
+            if (holidayMap[d.toISOString().slice(0, 10)]) continue
+            workingDayCount++
         }
 
-        const absentCount = Math.max(0, workingDayCount - clockedThisMonth.size)
+        // A day worked on a holiday was already removed from workingDayCount, so it
+        // must not also be subtracted as "clocked in".
+        const clockedWorkingDays = [...clockedThisMonth].filter(
+            (s) => !holidayMap[s] && !offIndices.has(new Date(s + "T00:00:00Z").getUTCDay())
+        ).length
+        const absentCount = Math.max(0, workingDayCount - clockedWorkingDays)
 
         const attendanceSummary = {
             PRESENT: presentCount,
@@ -285,7 +291,7 @@ const user   = await User.create({ email, password: hashed, role: role || "EMPLO
                     lunchEnd:   workSchedule?.lunchEnd   || "",
                     weekOff:    workSchedule?.weekOff    ?? ["Saturday", "Sunday"],
                 },
-                assignedLocation: resolveAssignedLocation(assignedLocation),
+                assignedLocation: await resolveAssignedLocation(assignedLocation),
             })
         } catch (employeeError) {
             // Employee.create failed (e.g. duplicate employeeId) — the User
@@ -351,7 +357,7 @@ export const updateEmployee = async (req, res) => {
                 lunchEnd:   workSchedule?.lunchEnd   || "",
                 weekOff:    workSchedule?.weekOff    || ["Saturday", "Sunday"],
             },
-            assignedLocation: resolveAssignedLocation(assignedLocation),
+            assignedLocation: await resolveAssignedLocation(assignedLocation),
         })
 
         const userUpdate = { email }
@@ -412,11 +418,13 @@ export const restoreEmployee = async (req, res) => {
 export const resetEmployeePassword = async (req, res) => {
     try {
         const { newPassword } = req.body
-        if (!newPassword || newPassword.length < 6)
+        if (typeof newPassword !== "string" || newPassword.length < 6)
             return res.status(400).json({ error: "New password must be at least 6 characters" })
+        if (newPassword.length > 72)   // bcrypt ignores anything past 72 bytes
+            return res.status(400).json({ error: "New password must be 72 characters or fewer" })
 
         const employee = await Employee.findById(req.params.id).lean()
-        if (!employee) return res.status(404).json({ error: "Employee not found" })
+        if (!employee || !employee.userId) return res.status(404).json({ error: "Employee not found" })
 
         const hashed = await bcrypt.hash(newPassword, 10)
         await User.findByIdAndUpdate(employee.userId, { password: hashed })

@@ -1,11 +1,6 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "server.js",
-      "use": "@vercel/node"
-    }
-  ],
+  "builds": [{ "src": "server.js", "use": "@vercel/node" }],
   "routes": [
     {
       "src": "/(.*)",
@@ -14,9 +9,7 @@
     }
   ],
   "crons": [
-    {
-      "path": "/api/internal/run-birthday-check",
-      "schedule": "30 3 * * *"
-    }
+    { "path": "/api/internal/run-birthday-check", "schedule": "30 3 * * *" },
+    { "path": "/api/internal/run-auto-checkout",  "schedule": "30 18 * * *" }
   ]
 }

@@ -21,6 +21,9 @@ const leaveApplicationSchema = new mongoose.Schema({
     },
 }, { timestamps: true })
 
+// NEW: fast "pending leaves" count / list
+leaveApplicationSchema.index({ status: 1, createdAt: -1 })
+
 const LeaveApplication =
     mongoose.models.LeaveApplication ||
     mongoose.model("LeaveApplication", leaveApplicationSchema)

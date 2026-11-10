@@ -10,6 +10,9 @@ const announcementSchema = new mongoose.Schema({
     employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "Employee", default: null },
 }, { timestamps: true })
 
+// NEW: fast "newest first" list and "count since" queries
+announcementSchema.index({ createdAt: -1 })
+
 const Announcement = mongoose.models.Announcement || mongoose.model("Announcement", announcementSchema)
 
 export default Announcement

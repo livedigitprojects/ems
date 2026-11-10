@@ -6,6 +6,7 @@ import LeaveApplication         from "../models/LeaveApplication.js"
 import Payslip                  from "../models/Payslip.js"
 import { createNotification, getAdminUserIds } from "./notificationController.js"
 import { getMonthCounts, calcSalary } from "./payslipController.js"
+import { getHolidayMapForMonth, getHolidayName } from "../utils/attendanceConfig.js"
 
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000
 
@@ -63,8 +64,10 @@ const buildMonthAttendanceMap = async (employee, year, month) => {
   }
 
   const leaveDateMap = getLeaveApprovedDates(approvedLeaves, monthStartUTC, monthEndUTC)
+  const holidays     = await getHolidayMapForMonth(year, month)   // { "YYYY-MM-DD": "Holiday name" }
 
   return {
+    holidays,
     attendance:          attMap,
     regularizations:     regMap,
     lateRegularizations: lateRegMap,
@@ -138,6 +141,10 @@ export const createRegularization = async (req, res) => {
 
     const [y, m, d] = date.split("-").map(Number)
     const utcDate   = new Date(Date.UTC(y, m - 1, d, 0, 0, 0) - IST_OFFSET_MS)
+
+    const holidayName = await getHolidayName(date)
+    if (holidayName)
+      return res.status(400).json({ error: `${date} is a company holiday (${holidayName}). No regularization is needed.` })
 
     const existing = await Attendance.findOne({ employeeId: employee._id, date: utcDate })
     if (existing) return res.status(400).json({ error: "You already have attendance recorded for this date." })
@@ -388,31 +395,3 @@ export const updateLateRegularizationStatus = async (req, res) => {
   }
 }
 
-// export const updateLateRegularizationStatus = async (req, res) => {
-//   try {
-//     const { status, adminRemark } = req.body
-//     if (!["APPROVED", "REJECTED"].includes(status)) return res.status(400).json({ error: "Invalid status" })
-
-//     const reg = await LateRegularization.findById(req.params.id)
-//     if (!reg) return res.status(404).json({ error: "Request not found" })
-
-//     reg.status = status; reg.adminRemark = adminRemark || ""; await reg.save()
-
-//     const emp = await Employee.findById(reg.employeeId).select("userId").lean()
-//     if (emp?.userId) {
-//       const dateStr = new Date(reg.date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10)
-//       await createNotification({
-//         recipientId: emp.userId, recipientRole: "EMPLOYEE",
-//         type: status === "APPROVED" ? "LATE_REGULARIZATION_APPROVED" : "LATE_REGULARIZATION_REJECTED",
-//         title: `Late Regularization ${status === "APPROVED" ? "Approved" : "Rejected"}`,
-//         message: `Your late attendance regularization for ${dateStr} has been ${status.toLowerCase()}. It is counted as Present for calculations.${adminRemark ? " Admin note: " + adminRemark : ""}`,
-//         refId: reg._id, refType: "LateRegularization",
-//       })
-//     }
-
-//     return res.json({ success: true, data: reg })
-//   } catch (err) {
-//     console.error("updateLateRegularizationStatus error:", err)
-//     return res.status(500).json({ error: "Failed to update late regularization status" })
-//   }
-// }

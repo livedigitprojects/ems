@@ -1,13 +1,11 @@
 import { Loader2Icon, MapPinIcon, MapPinOffIcon } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import toast from "react-hot-toast"
 import api from "../api/axios"
 import { DEPARTMENTS } from "../assets/assets.js"
 
-// ─── Import office data from the single source of truth ───────────────────────
-// Never duplicate coordinates here — always read from this shared constant.
-import { OFFICE_LOCATIONS } from "../constants/offices.js"
+// Offices are managed by admins (Attendance Rules page) and loaded from the API.
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -59,6 +57,15 @@ const EmployeeForm = ({ initialData, onSuccess, onCancel, isAdmin = false }) => 
         initialData?.assignedLocation?.office || ""
     )
 
+    const [offices, setOffices] = useState([])
+    useEffect(() => {
+        if (!isAdmin) return
+        api.get("/offices")
+            .then(({ data }) => setOffices(data.data || []))
+            .catch(() => toast.error("Could not load office locations"))
+    }, [isAdmin])
+    const selectedOfficeData = offices.find((o) => o.key === selectedOffice)
+
     const handleSubmit = async (e) => {
         e.preventDefault()
 
@@ -78,7 +85,7 @@ const EmployeeForm = ({ initialData, onSuccess, onCancel, isAdmin = false }) => 
             body.workSchedule = workSchedule
 
             // Send only the office key — the backend resolves coordinates
-            // from constants/offices.js. Never send raw lat/lng from the frontend.
+            // from the Office collection. Never send raw lat/lng from the frontend.
             body.assignedLocation = enableGeofencing && selectedOffice
                 ? { office: selectedOffice }
                 : { office: null }
@@ -366,22 +373,22 @@ const EmployeeForm = ({ initialData, onSuccess, onCancel, isAdmin = false }) => 
                                     required
                                 >
                                     <option value="">Select Office Location</option>
-                                    {Object.entries(OFFICE_LOCATIONS).map(([key, office]) => (
-                                        <option key={key} value={key}>{office.label}</option>
+                                    {offices.map((office) => (
+                                        <option key={office.key} value={office.key}>{office.label}</option>
                                     ))}
                                 </select>
                             </div>
 
-                            {selectedOffice && OFFICE_LOCATIONS[selectedOffice] && (
+                            {selectedOfficeData && (
                                 <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
                                     <div className="flex items-center gap-2 text-indigo-600 font-medium mb-2">
                                         <MapPinIcon className="w-4 h-4" />
-                                        {OFFICE_LOCATIONS[selectedOffice].label}
+                                        {selectedOfficeData.label}
                                     </div>
                                     <div className="text-xs text-slate-500 space-y-1">
-                                        <p>Latitude: {OFFICE_LOCATIONS[selectedOffice].latitude}</p>
-                                        <p>Longitude: {OFFICE_LOCATIONS[selectedOffice].longitude}</p>
-                                        <p>Allowed Radius: {OFFICE_LOCATIONS[selectedOffice].radiusMeters}m</p>
+                                        <p>Latitude: {selectedOfficeData.latitude}</p>
+                                        <p>Longitude: {selectedOfficeData.longitude}</p>
+                                        <p>Allowed Radius: {selectedOfficeData.radiusMeters}m</p>
                                     </div>
                                 </div>
                             )}

@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
-const LeaveHistory = ({leaves,isAdmin,onUpdate}) => {
+const LeaveHistory = ({leaves,isAdmin,onUpdate,className=""}) => {
     const [processing,setProcessing] = useState(null);
 
     const handleStatusUpdate =async(id,status)=>{
@@ -19,10 +19,11 @@ const LeaveHistory = ({leaves,isAdmin,onUpdate}) => {
         }
     }
   return (
-     <div className='card overflow-hidden'>
-            <div className='overflow-x-auto'>
-                <table className='table-modern'>
-                    <thead className='bg-white/[0.07] '>
+     <div className={`card overflow-hidden flex flex-col ${className}`}>
+            {/* Scrolls both ways inside the card; header row stays pinned */}
+            <div className='overflow-auto max-h-[65vh] lg:max-h-none lg:flex-1 lg:min-h-0'>
+                <table className='table-modern min-w-[680px]'>
+                    <thead className='sticky top-0 z-10 [&_th]:bg-[#161b36] [&_th]:whitespace-nowrap'>
                         <tr>
                             {isAdmin && <th>Employee</th>}
                             <th>Type</th>

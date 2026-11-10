@@ -94,9 +94,9 @@ const Leave = () => {
     }
 
     return (
-        <div className="animate-fade-in">
+        <div className="animate-fade-in lg:h-full lg:flex lg:flex-col lg:min-h-0">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+            <div className="shrink-0 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                 <div>
                     <h1 className="text-slate-100 text-3xl">Leave Management</h1>
                     <p className="page-subtitle">
@@ -115,7 +115,7 @@ const Leave = () => {
 
             {/* Leave Balance Cards — employee only */}
             {!isAdmin && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-8">
+                <div className="shrink-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
                     {leaveStats.map((s) => {
                         const c           = colorMap[s.color]
                         const pct         = s.limit ? Math.round((s.used / s.limit) * 100) : 0
@@ -219,7 +219,7 @@ const Leave = () => {
                 </div>
             )}
 
-            <LeaveHistory leaves={leaves} isAdmin={isAdmin} onUpdate={fetchLeaves} />
+            <LeaveHistory leaves={leaves} isAdmin={isAdmin} onUpdate={fetchLeaves} className="lg:flex-1 lg:min-h-0" />
 
             <ApplyLeaveModel
                 open={showModel}

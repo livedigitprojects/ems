@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { BellIcon, CheckCheckIcon, XIcon, ClockIcon, FileTextIcon, MegaphoneIcon, IndianRupeeIcon, MailIcon } from "lucide-react"
 import api from "../api/axios"
+import useSummary from "../hooks/useSummary"
 
 const TYPE_STYLES = {
     LEAVE_REQUEST:                { icon: FileTextIcon,   color: "text-blue-400",   bg: "bg-blue-500/10"   },
@@ -29,26 +30,28 @@ const timeAgo = (dateStr) => {
 
 const NotificationBell = () => {
     const [notifications, setNotifications] = useState([])
-    const [unreadCount,   setUnreadCount]   = useState(0)
     const [open,          setOpen]          = useState(false)
     const [loading,       setLoading]       = useState(false)
     const panelRef = useRef(null)
+
+    // Badge count comes from the shared summary poll (one request for the whole
+    // app). The full list is only loaded when the panel is opened.
+    const { summary, patchSummary } = useSummary(true)
+    const unreadCount = summary.unreadNotifications
 
     const fetchNotifications = useCallback(async () => {
         try {
             const { data } = await api.get("/notifications")
             setNotifications(data.data || [])
-            setUnreadCount(data.unreadCount || 0)
+            patchSummary({ unreadNotifications: data.unreadCount || 0 })
         } catch (err) {
             console.error("Failed to fetch notifications:", err?.response?.data || err.message)
         }
-    }, [])
+    }, [patchSummary])
 
     useEffect(() => {
-        fetchNotifications()
-        const interval = setInterval(fetchNotifications, 30000)
-        return () => clearInterval(interval)
-    }, [fetchNotifications])
+        if (open) fetchNotifications()
+    }, [open, fetchNotifications])
 
     useEffect(() => {
         const handleClickOutside = (e) => {
@@ -62,7 +65,7 @@ const NotificationBell = () => {
         try {
             await api.patch(`/notifications/${id}/read`)
             setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
-            setUnreadCount(prev => Math.max(0, prev - 1))
+            patchSummary({ unreadNotifications: Math.max(0, unreadCount - 1) })
         } catch (err) {
             console.error("Failed to mark notification read:", err?.response?.data || err.message)
         }
@@ -73,7 +76,7 @@ const NotificationBell = () => {
         try {
             await api.patch("/notifications/read-all")
             setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
-            setUnreadCount(0)
+            patchSummary({ unreadNotifications: 0 })
         } catch (err) {
             console.error("Failed to mark all notifications read:", err?.response?.data || err.message)
         }

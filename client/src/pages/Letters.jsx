@@ -312,10 +312,26 @@ const buildLetterHTML = (letter) => {
   }
   .fc-icon svg{width:8px;height:8px;fill:#fff}
 
+  /* -- Layout table: its <tfoot> repeats on every printed page and reserves
+        room for the fixed footer, so text never runs underneath it -- */
+  .layout{width:100%;border-collapse:collapse;flex:1}
+  .layout td{padding:0;vertical-align:top}
+  .footer-space{display:none}
+  .sig-section{break-inside:avoid;page-break-inside:avoid}
+  .letter-body p,.letter-body li{break-inside:avoid;page-break-inside:avoid}
+
   @page{size:A4;margin:0}
   @media print{
     html,body{background:#fff}
-    .page{box-shadow:none}
+    .page{display:block;min-height:0;overflow:visible;box-shadow:none}
+    .footer-space{display:block;height:16mm}
+    /* position:fixed repeats the footer at the bottom of EVERY page */
+    .footer{
+      position:fixed;left:0;right:0;bottom:0;
+      height:14mm;padding-top:0;padding-bottom:0;margin:0;
+      z-index:3;
+    }
+    .deco-bl{position:fixed;bottom:0;left:0}
   }
 </style>
 </head>
@@ -338,6 +354,8 @@ const buildLetterHTML = (letter) => {
       <polygon points="0,100 70,100 0,30" fill="${accent}" opacity="0.15"/>
     </svg>
   </div>
+
+  <table class="layout"><tbody><tr><td>
 
   <!-- HEADER -->
   <div class="header">
@@ -376,23 +394,27 @@ const buildLetterHTML = (letter) => {
   </div>
 
   <!-- SIGNATURE -->
-  // <div class="sig-section">
-  //   <div class="sig-rule"></div>
-  //   <div class="sig-row">
-  //     <div class="sig-block">
-  //       <div class="sig-line"></div>
-  //       <div class="sig-name">Authorised Signatory</div>
-  //       <div class="sig-role">HR Department · ${COMPANY.name}</div>
-  //     </div>
-  //     <div class="sig-block" style="text-align:right">
-  //       <div class="sig-line" style="margin-left:auto"></div>
-  //       <div class="sig-name">Employee Acknowledgement</div>
-  //       <div class="sig-role">Signature &amp; Date</div>
-  //     </div>
-  //   </div>
-  // </div>
+  <div class="sig-section">
+    <div class="sig-rule"></div>
+    <div class="sig-row">
+      <div class="sig-block">
+        <div class="sig-line"></div>
+        <div class="sig-name">Authorised Signatory</div>
+        <div class="sig-role">HR Department · ${COMPANY.name}</div>
+      </div>
+      <div class="sig-block" style="text-align:right">
+        <div class="sig-line" style="margin-left:auto"></div>
+        <div class="sig-name">Employee Acknowledgement</div>
+        <div class="sig-role">Signature &amp; Date</div>
+      </div>
+    </div>
+  </div>
 
-  <!-- FOOTER -->
+  </td></tr></tbody>
+  <tfoot><tr><td><div class="footer-space"></div></td></tr></tfoot>
+  </table>
+
+  <!-- FOOTER (fixed to the bottom of every printed page) -->
   <div class="footer">
     <div class="fc-item">
       <div class="fc-icon">

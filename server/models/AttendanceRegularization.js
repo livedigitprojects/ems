@@ -27,6 +27,9 @@ const regularizationSchema = new mongoose.Schema(
 // One regularization per employee per date
 regularizationSchema.index({ employeeId: 1, date: 1 }, { unique: true })
 
+// NEW: fast "pending regularizations" count / list
+regularizationSchema.index({ status: 1, createdAt: -1 })
+
 const AttendanceRegularization =
   mongoose.models.AttendanceRegularization ||
   mongoose.model("AttendanceRegularization", regularizationSchema)

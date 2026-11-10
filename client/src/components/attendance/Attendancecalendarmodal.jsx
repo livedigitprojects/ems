@@ -36,6 +36,7 @@ const DAY_STYLES = {
   PENDING:       { bg: "bg-orange-500/15", border: "border-orange-500/35", text: "text-orange-300", dot: "bg-orange-400", label: "Reg. Pending"  },
   APPROVED:      { bg: "bg-green-500/20",  border: "border-green-500/40",  text: "text-green-300",  dot: "bg-green-400",  label: "Reg. Approved" },
   WEEKEND:       { bg: "bg-slate-800/60",  border: "border-slate-700/30",  text: "text-slate-600",  dot: null,            label: "Weekend"       },
+  HOLIDAY:       { bg: "bg-cyan-500/15",   border: "border-cyan-500/35",   text: "text-cyan-300",   dot: "bg-cyan-400",   label: "Holiday"       },
   FUTURE:        { bg: "bg-slate-800/30",  border: "border-slate-700/20",  text: "text-slate-700",  dot: null,            label: ""              },
 }
 
@@ -321,6 +322,7 @@ const AttendanceCalendarModal = ({ onClose }) => {
       const regRec    = data?.regularizations?.[dateStr]
       const lateReg   = data?.lateRegularizations?.[dateStr]
       const leaveInfo = data?.leaveDateMap?.[dateStr]
+      const holidayName = data?.holidays?.[dateStr] || null
 
       let status = null, leaveStyle = null, leaveLabel = null
 
@@ -332,6 +334,8 @@ const AttendanceCalendarModal = ({ onClose }) => {
         if      (lateReg?.status === "APPROVED") status = "LATE_APPROVED"
         else if (lateReg?.status === "PENDING")  status = "LATE_PENDING"
         else                                     status = "LATE"
+      } else if (holidayName) {
+        status = "HOLIDAY"
       } else if (leaveInfo) {
         const ls = LEAVE_STYLES[leaveInfo.status === "PENDING" ? "PENDING" : leaveInfo.type]
         leaveStyle = ls; leaveLabel = ls?.label || "Leave"; status = "LEAVE"
@@ -345,7 +349,7 @@ const AttendanceCalendarModal = ({ onClose }) => {
         status = "ABSENT"
       }
 
-      cells.push({ d, dateStr, status, attRec, regRec, lateReg, leaveInfo, leaveStyle, leaveLabel, isWeekend, isFuture })
+      cells.push({ d, dateStr, status, attRec, regRec, lateReg, leaveInfo, leaveStyle, leaveLabel, holidayName, isWeekend, isFuture })
     }
     return cells
   }
@@ -361,6 +365,7 @@ const AttendanceCalendarModal = ({ onClose }) => {
     { label: "LOP (Absent)",     dot: "bg-red-400"    },
     { label: "Leave Pending",    dot: "bg-orange-400" },
     { label: "Weekend",          dot: "bg-slate-600"  },
+    { label: "Holiday",          dot: "bg-cyan-400"   },
   ]
 
   return (
@@ -414,6 +419,7 @@ const AttendanceCalendarModal = ({ onClose }) => {
                           : cell.lateReg ? `Late Reg: ${cell.lateReg.status}`
                           : cell.regRec  ? `Reg: ${cell.regRec.status}`
                           : cell.attRec  ? cell.attRec.status
+                          : cell.holidayName ? `Holiday: ${cell.holidayName}`
                           : cell.isWeekend ? "Weekend"
                           : cell.isFuture  ? "Click to apply leave"
                           : "Absent"

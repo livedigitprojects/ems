@@ -1,6 +1,7 @@
 import { useState } from "react"
 import api from "../api/axios"
 import toast from "react-hot-toast"
+import ResetPasswordModal from "./ResetPasswordModal"
 import {
   PencilIcon, Trash2Icon, X, Loader2Icon, EyeIcon,
   ClockIcon, CoffeeIcon, UtensilsIcon, CalendarOffIcon, MapPinIcon, KeyIcon, RotateCcwIcon,
@@ -69,9 +70,7 @@ const EmployeeCard = ({ employee, onDelete, onEdit, onRestore, isAdmin = false }
   const [detail,        setDetail]        = useState(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [detailError,   setDetailError]   = useState(null)
-  const [showResetPwd,  setShowResetPwd]  = useState(false)
-  const [newPassword,   setNewPassword]   = useState("")
-  const [resetting,     setResetting]     = useState(false)
+  const [showPwdModal,  setShowPwdModal]  = useState(false)
   const [restoring,     setRestoring]     = useState(false)
 
   const empId = employee.id || employee._id
@@ -106,8 +105,6 @@ const EmployeeCard = ({ employee, onDelete, onEdit, onRestore, isAdmin = false }
     setDetail(null)
     setShowDetail(true)
     setLoadingDetail(true)
-    setShowResetPwd(false)
-    setNewPassword("")
     try {
       const res = await api.get(`/employees/${empId}`)
       setDetail(res.data)
@@ -116,22 +113,6 @@ const EmployeeCard = ({ employee, onDelete, onEdit, onRestore, isAdmin = false }
     } finally {
       setLoadingDetail(false)
     }
-  }
-
-  const handleResetPassword = async () => {
-    if (!newPassword || newPassword.length < 6) {
-      toast.error("Password must be at least 6 characters")
-      return
-    }
-    setResetting(true)
-    try {
-      await api.post(`/employees/${empId}/reset-password`, { newPassword })
-      toast.success("Password reset successfully")
-      setShowResetPwd(false)
-      setNewPassword("")
-    } catch (err) {
-      toast.error(err.response?.data?.error || "Failed to reset password")
-    } finally { setResetting(false) }
   }
 
   return (
@@ -173,6 +154,11 @@ const EmployeeCard = ({ employee, onDelete, onEdit, onRestore, isAdmin = false }
                 title="Edit Employee">
                 <PencilIcon className="w-4 h-4" />
               </button>
+              <button onClick={(e) => { e.stopPropagation(); setShowPwdModal(true) }}
+                className="p-2.5 bg-white/90 backdrop-blur-sm text-slate-700 hover:text-indigo-600 rounded-xl shadow-lg transition-all hover:scale-105"
+                title="Change Password">
+                <KeyIcon className="w-4 h-4" />
+              </button>
               <button onClick={(e) => { e.stopPropagation(); handleDelete() }}
                 className="p-2.5 bg-white/90 backdrop-blur-sm text-slate-700 hover:text-rose-600 rounded-xl shadow-lg transition-all hover:scale-105"
                 title="Delete Employee">
@@ -201,6 +187,10 @@ const EmployeeCard = ({ employee, onDelete, onEdit, onRestore, isAdmin = false }
               <button onClick={(e) => { e.stopPropagation(); onEdit(employee) }}
                 className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg">
                 <PencilIcon className="w-4 h-4" />
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setShowPwdModal(true) }}
+                className="p-2 bg-slate-700 text-white rounded-xl shadow-lg">
+                <KeyIcon className="w-4 h-4" />
               </button>
               <button onClick={(e) => { e.stopPropagation(); handleDelete() }}
                 className="p-2 bg-rose-500 text-white rounded-xl shadow-lg">
@@ -388,42 +378,13 @@ const EmployeeCard = ({ employee, onDelete, onEdit, onRestore, isAdmin = false }
                       </button>
                     </div>
 
-                    {/* Reset Password */}
-                    {!showResetPwd ? (
-                      <button
-                        onClick={() => setShowResetPwd(true)}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-sm font-medium hover:border-indigo-300 hover:text-indigo-600 transition-colors"
-                      >
-                        <KeyIcon className="w-4 h-4" /> Reset Password
-                      </button>
-                    ) : (
-                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                        <p className="text-xs font-semibold text-slate-600">Set new password for this employee</p>
-                        <input
-                          type="password"
-                          value={newPassword}
-                          onChange={e => setNewPassword(e.target.value)}
-                          placeholder="Min 6 characters"
-                          className="w-full text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-indigo-400"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => { setShowResetPwd(false); setNewPassword("") }}
-                            className="flex-1 text-sm px-3 py-2 rounded-lg border border-slate-300 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={handleResetPassword}
-                            disabled={resetting || newPassword.length < 6}
-                            className="flex-1 text-sm px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                          >
-                            {resetting && <Loader2Icon className="w-3.5 h-3.5 animate-spin" />}
-                            Confirm Reset
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    {/* Change Password */}
+                    <button
+                      onClick={() => setShowPwdModal(true)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-sm font-medium hover:border-indigo-300 hover:text-indigo-600 transition-colors"
+                    >
+                      <KeyIcon className="w-4 h-4" /> Change Password
+                    </button>
                   </div>
                 )}
 
@@ -450,6 +411,10 @@ const EmployeeCard = ({ employee, onDelete, onEdit, onRestore, isAdmin = false }
             )}
           </div>
         </div>
+      )}
+
+      {showPwdModal && (
+        <ResetPasswordModal employee={employee} empId={empId} onClose={() => setShowPwdModal(false)} />
       )}
     </>
   )

@@ -3,6 +3,7 @@ import LeaveApplication from "../models/LeaveApplication.js"
 import Attendance       from "../models/Attendance.js"
 import LateRegularization from "../models/LateRegularization.js"
 import { createNotification, getAdminUserIds } from "./notificationController.js"
+import { getHolidayMapForMonth } from "../utils/attendanceConfig.js"
 
 export const LEAVE_LIMITS = {
     SICK:        6,
@@ -415,8 +416,9 @@ export const getLopSummary = async (req, res) => {
         const queryEnd   = new Date(monthEnd.getTime()   + IST_OFFSET_MS)
 
         const weekOff      = employee.workSchedule?.weekOff ?? []
-        const workingDates = getWorkingDatesOfMonth(m, y, weekOff)
-        const workingDays  = getWorkingDays(m, y, weekOff)
+        const holidayMap   = await getHolidayMapForMonth(y, m)
+        const workingDates = getWorkingDatesOfMonth(m, y, weekOff).filter((d) => !holidayMap[d])
+        const workingDays  = Math.max(1, workingDates.length)
         const weekOffLabel = weekOff.length ? weekOff.join(", ") : "Sunday"
 
         // ── LOP leaves ────────────────────────────────────────────────────────

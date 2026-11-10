@@ -76,7 +76,7 @@ export const updateProfile = async (req, res) => {
         const employee = await Employee.findOneAndUpdate(
             { userId },
             { $set: updates },
-            { new: true, runValidators: false }
+            { returnDocument: "after", runValidators: false }
         )
         if (!employee) return res.status(404).json({ error: "Profile not found" })
 

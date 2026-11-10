@@ -1,7 +1,6 @@
 import express from "express"
 import cors from "cors"
 import "dotenv/config"
-import multer from "multer"
 import helmet from "helmet"
 import connectDB from "./config/db.js"
 import authRouter from "./routes/authRoutes.js"
@@ -13,22 +12,24 @@ import payslipRouter from "./routes/payslipRoutes.js"
 import dashboardRouter from "./routes/dashboardRoutes.js"
 import announcementRouter from "./routes/announcementRoutes.js"
 import holidayRouter from "./routes/holidayRoutes.js"
-import { serve } from "inngest/express"
 import regularizationRouter from "./routes/regularizationRoutes.js"
 import letterRouter from "./routes/letterRoutes.js"
-import { startAutoCheckoutJob } from './jobs/autoCheckout.js'
-import { startBirthdayAnnouncementJob } from './jobs/birthdayAnnouncement.js'
+import { startAutoCheckoutJob } from "./jobs/autoCheckout.js"
+import { startBirthdayAnnouncementJob } from "./jobs/birthdayAnnouncement.js"
 import notificationRouter from "./routes/notificationRoutes.js"
-import exportRouter       from "./routes/exportRoutes.js"
-import internalRouter     from "./routes/internalRoutes.js"
+import exportRouter from "./routes/exportRoutes.js"
+import internalRouter from "./routes/internalRoutes.js"
+import officeRouter from "./routes/officeRoutes.js"
+import attendanceSettingsRouter from "./routes/attendanceSettingsRoutes.js"
 import { mongoSanitizeBody } from "./middleware/mongoSanitizeBody.js"
 
-
 const app = express()
+app.set("trust proxy", 1)
 const PORT = process.env.PORT || 4000
 
 const allowedOrigins = [
     "https://ems-snowy-six.vercel.app",
+    "https://ems.livedigit.in",
     "http://localhost:5173"
 ]
 
@@ -53,7 +54,7 @@ app.use(express.json({ limit: "10mb" }))
 app.use(express.urlencoded({ limit: "10mb", extended: true }))
 app.use(mongoSanitizeBody)
 
-// ── Ensure DB is connected before every request (critical for Vercel serverless) ──
+// Connect per request (cached after the first call)
 app.use(async (req, res, next) => {
     try {
         await connectDB()
@@ -75,31 +76,26 @@ app.use("/api/announcements",  announcementRouter)
 app.use("/api/holidays",       holidayRouter)
 app.use("/api/regularization", regularizationRouter)
 app.use("/api/letters",        letterRouter)
-app.use("/api/notifications", notificationRouter)
-app.use("/api/export",        exportRouter)
-app.use("/api/internal",      internalRouter)
+app.use("/api/notifications",  notificationRouter)
+app.use("/api/export",         exportRouter)
+app.use("/api/internal",       internalRouter)
+app.use("/api/offices",        officeRouter)
+app.use("/api/attendance-settings", attendanceSettingsRouter)
 
 app.get("/", (req, res) => res.send("Server running successfully"))
 
-const startServer = async () => {
-    try {
-        await connectDB()
-
-        startAutoCheckoutJob()
-
-        if (!process.env.VERCEL) {
+// Local dev / VPS only — never on Vercel
+if (!process.env.VERCEL) {
+    connectDB()
+        .then(() => {
+            startAutoCheckoutJob()
             startBirthdayAnnouncementJob()
-        }
-
-        if (!process.env.VERCEL) {
             app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
-        }
-    } catch (err) {
-        console.error("Failed to start server:", err)
-        process.exit(1)
-    }
+        })
+        .catch((err) => {
+            console.error("Failed to start server:", err)
+            process.exit(1)
+        })
 }
-
-startServer()
 
 export default app

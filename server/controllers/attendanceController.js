@@ -1,10 +1,9 @@
 import Attendance          from "../models/Attendance.js"
 import Employee            from "../models/Employee.js"
-import { OFFICE_LOCATIONS } from "../constants/offices.js"
+import { getAttendanceSettings, getOfficeByKey, isLateArrival, getHolidayName, toISTDateStr } from "../utils/attendanceConfig.js"
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const LATE_THRESHOLD = { hour: 10, minute: 15 }
 const EXPECTED_HOURS = 9
 const IST_OFFSET_MS  = (5 * 60 + 30) * 60 * 1000
 
@@ -45,11 +44,6 @@ const parseCoords = (body) => {
     return { lat, lng, accuracy: isNaN(accuracy) ? null : accuracy }
 }
 
-const isLateArrival = (istDate) =>
-    istDate.getUTCHours() > LATE_THRESHOLD.hour ||
-    (istDate.getUTCHours() === LATE_THRESHOLD.hour &&
-     istDate.getUTCMinutes() > LATE_THRESHOLD.minute)
-
 // ─── Clock In / Out ───────────────────────────────────────────────────────────
 
 export const clockInOut = async (req, res) => {
@@ -59,7 +53,12 @@ export const clockInOut = async (req, res) => {
         if (employee.isDeleted) return res.status(403).json({ error: "Your account is deactivated. You cannot clock in/out." })
 
         const officeKey = employee.assignedLocation?.office
-        const loc       = officeKey ? OFFICE_LOCATIONS[officeKey] : null
+        const loc       = officeKey ? await getOfficeByKey(officeKey) : null
+
+        // Assigned to an office that no longer exists: fail closed rather than silently
+        // skipping the geofence check.
+        if (officeKey && !loc)
+            return res.status(400).json({ error: "Your assigned office location is no longer configured. Please contact your admin." })
 
         const coords = parseCoords(req.body)
 
@@ -108,7 +107,7 @@ const processClockInOut = async (req, res, employee, coords) => {
             employeeId: employee._id,
             date:       todayIST,
             checkIn:    now,
-            status:     isLateArrival(toIST(now)) ? "LATE" : "PRESENT",
+            status:     isLateArrival(toIST(now), await getAttendanceSettings()) ? "LATE" : "PRESENT",
             checkInLocation: { latitude: coords.lat, longitude: coords.lng },
         })
         return res.json({ success: true, type: "CHECK_IN", data: attendance })
@@ -230,6 +229,11 @@ export const getTodayAbsent = async (req, res) => {
         const now         = new Date()
         const todayIST    = getISTMidnight(now)
         const tomorrowIST = new Date(todayIST.getTime() + 24 * 60 * 60 * 1000)
+
+        // A company holiday is never an absence — nobody is expected to clock in.
+        const holidayName = await getHolidayName(toISTDateStr(now))
+        if (holidayName)
+            return res.json({ data: [], date: todayIST, isHoliday: true, holidayName })
 
         // Get IDs of employees who have clocked in today
         const presentRecords = await Attendance

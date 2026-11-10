@@ -8,6 +8,7 @@ import { useAuth }              from '../context/authContext'
 import api                      from '../api/axios'
 import toast                    from 'react-hot-toast'
 import Loading                  from '../components/Loading'
+import usePolling               from '../hooks/usePolling'
 import {
     showNotification,
     showBackgroundNotification,
@@ -17,7 +18,8 @@ import {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const POLL_INTERVAL = 30_000
+const POLL_INTERVAL        = 60_000    // tab visible
+const HIDDEN_POLL_INTERVAL = 300_000   // tab in background (keeps background alerts, but rarely)
 
 const PRIORITY = {
     NORMAL:    { label: 'Normal',    color: 'bg-slate-500/15 text-slate-400',  dot: 'bg-slate-400',  icon: InfoIcon          },
@@ -422,10 +424,14 @@ const Announcements = () => {
         setLastSeen(now)
 
         requestNotificationPermission()
-
-        const timer = setInterval(() => fetchAnnouncements({ silent: true }), POLL_INTERVAL)
-        return () => clearInterval(timer)
     }, [fetchAnnouncements])
+
+    // Visibility-aware polling: 60s while visible, 5 min in background.
+    usePolling(() => fetchAnnouncements({ silent: true }), {
+        intervalMs:       POLL_INTERVAL,
+        hiddenIntervalMs: HIDDEN_POLL_INTERVAL,
+        immediate:        false,
+    })
 
     const handleDelete = async (id) => {
         if (!confirm('Delete this announcement?')) return

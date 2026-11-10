@@ -23,6 +23,9 @@ const attendanceSchema = new mongoose.Schema({
 
 attendanceSchema.index({ employeeId: 1, date: 1 }, { unique: true })
 
+// NEW: lets the auto-checkout job find open records without scanning the whole collection
+attendanceSchema.index({ checkOut: 1, checkIn: 1 })
+
 const Attendance = mongoose.models.Attendance || mongoose.model("Attendance", attendanceSchema)
 
 export default Attendance

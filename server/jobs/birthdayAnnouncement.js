@@ -1,6 +1,7 @@
 import cron from "node-cron"
 import Employee from "../models/Employee.js"
 import Announcement from "../models/Announcement.js"
+import Notification from "../models/Notification.js"
 import { createNotification, getAdminUserIds, getAllUserIds } from "../controllers/notificationController.js"
 
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000
@@ -13,10 +14,30 @@ const WISH_MESSAGES = [
 
 const pickWish = () => WISH_MESSAGES[Math.floor(Math.random() * WISH_MESSAGES.length)]
 
+// Birthday announcements are only relevant for a short while: remove them (and the
+// notifications that point at them) once they are a month old.
+export const cleanupOldBirthdayAnnouncements = async () => {
+  const cutoff = new Date()
+  cutoff.setMonth(cutoff.getMonth() - 1)
+
+  const old = await Announcement.find({ type: "BIRTHDAY", createdAt: { $lt: cutoff } }).select("_id").lean()
+  if (!old.length) return 0
+
+  const ids = old.map((a) => a._id)
+  await Notification.deleteMany({ refType: "Announcement", refId: { $in: ids } })
+  await Announcement.deleteMany({ _id: { $in: ids } })
+  console.log(`[BirthdayAnnouncement] Removed ${ids.length} birthday announcement(s) older than a month`)
+  return ids.length
+}
+
 // Finds every active employee whose date of birth falls on today (IST),
 // posts a "🎂 Happy Birthday" announcement for each, and notifies everyone.
 // Safe to run more than once a day — it skips anyone already wished today.
 export const runBirthdayAnnouncements = async () => {
+  // Housekeeping first, in its own try/catch so a cleanup problem never blocks today's wishes.
+  try { await cleanupOldBirthdayAnnouncements() }
+  catch (err) { console.error("[BirthdayAnnouncement] Cleanup failed:", err) }
+
   try {
     const istNow = new Date(Date.now() + IST_OFFSET_MS)
     const month  = istNow.getUTCMonth() + 1

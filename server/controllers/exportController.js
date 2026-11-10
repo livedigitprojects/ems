@@ -3,6 +3,7 @@ import Attendance           from "../models/Attendance.js"
 import LeaveApplication     from "../models/LeaveApplication.js"
 import LateRegularization   from "../models/LateRegularization.js"
 import Payslip              from "../models/Payslip.js"
+import { getHolidayMapForMonth } from "../utils/attendanceConfig.js"
 
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"]
@@ -49,8 +50,10 @@ const buildEmployeeReport = async (employee, month, year) => {
     const queryEnd   = new Date(monthEnd.getTime()   + IST_OFFSET_MS)
 
     const weekOff      = employee.workSchedule?.weekOff ?? []
-    const workingDates = getWorkingDatesOfMonth(month, year, weekOff)
-    const workingDays  = getWorkingDays(month, year, weekOff)
+    // Holidays are excluded so this report matches the payslip for the same month.
+    const holidayMap   = await getHolidayMapForMonth(year, month)
+    const workingDates = getWorkingDatesOfMonth(month, year, weekOff).filter((d) => !holidayMap[d])
+    const workingDays  = Math.max(1, workingDates.length)
 
     const [attendanceRecords, leaveRecords, lateRegs, payslip] = await Promise.all([
         Attendance.find({ employeeId: employee._id, date: { $gte: queryStart, $lte: queryEnd } }).lean(),

@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import {
     CalendarIcon, ChevronRightIcon, FileTextIcon, IndianRupeeIcon,
     LayoutGridIcon, Loader2, LogOutIcon, MenuIcon, SettingsIcon,
     UserIcon, XIcon, UserCircleIcon, CalendarDaysIcon, BellIcon, ClipboardListIcon, MailIcon,
-    CalendarClockIcon,
+    CalendarClockIcon, SlidersHorizontalIcon,
 } from "lucide-react"
 import { useAuth } from "../context/authContext"
 import api from "../api/axios"
 import NotificationBell from "./NotificationBell"
+import useSummary from "../hooks/useSummary"
 
 
 const Sidebar = () => {
@@ -16,11 +17,7 @@ const Sidebar = () => {
     const [profile,      setProfile]      = useState(null)
     const [imgError,     setImgError]     = useState(false)
     const [mobileOpen,   setMobileOpen]   = useState(false)
-    const [unreadCount,       setUnreadCount]       = useState(0)
-    const [pendingRegCount,   setPendingRegCount]   = useState(0)
-    const [pendingLeaveCount, setPendingLeaveCount] = useState(0)
-    const [unreadLetters,     setUnreadLetters]     = useState(0)
-    const { user, loading, logout }                 = useAuth()
+    const { user, loading, logout }       = useAuth()
 
     useEffect(() => {
         api.get("/profile")
@@ -31,59 +28,13 @@ const Sidebar = () => {
     useEffect(() => { setImgError(false) }, [profile?.avatar])
     useEffect(() => { setMobileOpen(false) }, [pathname])
 
-    useEffect(() => {
-        if (!user) return
-        const fetchUnread = async () => {
-            try {
-                const lastSeen = localStorage.getItem("announcementLastSeen") || ""
-                const res = await api.get(`/announcements/unread${lastSeen ? `?since=${lastSeen}` : ""}`)
-                setUnreadCount(res.data.count ?? 0)
-            } catch { /* silent */ }
-        }
-        fetchUnread()
-        const interval = setInterval(fetchUnread, 2 * 60 * 1000)
-        return () => clearInterval(interval)
-    }, [user])
-
-    useEffect(() => {
-        if (!user || user.role !== "ADMIN") return
-        const fetchPendingReg = async () => {
-            try {
-                const res = await api.get("/regularization?status=PENDING")
-                setPendingRegCount((res.data.data || []).length)
-            } catch { /* silent */ }
-        }
-        fetchPendingReg()
-        const interval = setInterval(fetchPendingReg, 30_000)
-        return () => clearInterval(interval)
-    }, [user])
-
-    useEffect(() => {
-        if (!user || user.role !== "ADMIN") return
-        const fetchPendingLeave = async () => {
-            try {
-                const res = await api.get("/leave?status=PENDING")
-                setPendingLeaveCount((res.data.data || []).length)
-            } catch { /* silent */ }
-        }
-        fetchPendingLeave()
-        const interval = setInterval(fetchPendingLeave, 30_000)
-        return () => clearInterval(interval)
-    }, [user])
-
-    useEffect(() => {
-        if (!user || user.role === "ADMIN") return
-        const fetchUnreadLetters = async () => {
-            try {
-                const res = await api.get("/letters")
-                const count = (res.data.data || []).filter((l) => !l.readAt).length
-                setUnreadLetters(count)
-            } catch { /* silent */ }
-        }
-        fetchUnreadLetters()
-        const interval = setInterval(fetchUnreadLetters, 30_000)
-        return () => clearInterval(interval)
-    }, [user])
+    // ONE shared, visibility-aware poll for every badge (replaces 4 separate
+    // 30s / 2min timers that kept hitting the API even in background tabs).
+    const { summary, patchSummary } = useSummary(!!user)
+    const unreadCount       = summary.unreadAnnouncements
+    const pendingRegCount   = summary.pendingRegularizations
+    const pendingLeaveCount = summary.pendingLeaves
+    const unreadLetters     = summary.unreadLetters
 
     const role     = user?.role
     const userName = profile ? `${profile.firstName} ${profile.lastName || ""}`.trim() : ""
@@ -95,6 +46,7 @@ const Sidebar = () => {
                 { name: "Employees",      href: "/employees",      icon: UserIcon,          },
                 { name: "Regularization", href: "/regularization", icon: ClipboardListIcon, badge: pendingRegCount   },
                 { name: "Attendance ", href: "/attendance-calendar", icon: CalendarClockIcon },
+                { name: "Attendance Rules", href: "/attendance-settings", icon: SlidersHorizontalIcon },
               ]
             : [
                 { name: "Attendance",       href: "/attendance",        icon: CalendarIcon      },
@@ -112,15 +64,33 @@ const Sidebar = () => {
 
     const handleLogout = () => { logout(); window.location.href = "/login" }
 
-    const handleNavClick = (href) => {
+    // Mark a section as "seen". The cut-off is stored so the next poll only counts
+    // requests that arrive AFTER this visit (the badge used to snap back to the full
+    // pending total on every refresh).
+    const markSeen = useCallback((href) => {
+        const now = new Date().toISOString()
         if (href === "/announcements") {
-            localStorage.setItem("announcementLastSeen", new Date().toISOString())
-            setUnreadCount(0)
+            localStorage.setItem("announcementLastSeen", now)
+            patchSummary({ unreadAnnouncements: 0 })
         }
-        if (href === "/regularization") setPendingRegCount(0)
-        if (href === "/leave")          setPendingLeaveCount(0)
-        if (href === "/letters")        setUnreadLetters(0)
-    }
+        if (href === "/regularization") {
+            localStorage.setItem("regularizationLastSeen", now)
+            patchSummary({ pendingRegularizations: 0 })
+        }
+        if (href === "/leave") {
+            localStorage.setItem("leaveLastSeen", now)
+            patchSummary({ pendingLeaves: 0 })
+        }
+        if (href === "/letters") patchSummary({ unreadLetters: 0 })
+    }, [patchSummary])
+
+    const handleNavClick = (href) => markSeen(href)
+
+    // Also covers arriving on the page by URL / back button, and new items that show up
+    // while the admin is already looking at the page.
+    useEffect(() => {
+        if (role === "ADMIN") markSeen(pathname)
+    }, [pathname, role, markSeen, summary.pendingRegularizations, summary.pendingLeaves])
 
     const avatarContent = profile?.avatar && !imgError ? (
         <img

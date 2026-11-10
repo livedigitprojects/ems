@@ -44,5 +44,8 @@ const letterSchema = new mongoose.Schema(
 // Index for fast employee inbox queries
 letterSchema.index({ recipientEmployeeId: 1, createdAt: -1 });
 
+// NEW: fast unread-letter count
+letterSchema.index({ recipientEmployeeId: 1, readAt: 1 });
+
 const Letter = mongoose.models.Letter || mongoose.model("Letter", letterSchema);
 export default Letter;

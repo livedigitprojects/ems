@@ -48,6 +48,7 @@ const DAY_STYLES = {
   APPROVED:      { bg:"bg-green-500/20",  border:"border-green-500/40",  text:"text-green-300",  dot:"bg-green-400",  label:"Approved"      },
   REJECTED:      { bg:"bg-red-500/15",    border:"border-red-500/30",    text:"text-red-400",    dot:"bg-red-400",    label:"Rejected"      },
   WEEKEND:       { bg:"bg-slate-800/60",  border:"border-slate-700/30",  text:"text-slate-600",  dot:null,            label:"Weekend"       },
+  HOLIDAY:       { bg: "bg-cyan-500/15",   border: "border-cyan-500/35",   text: "text-cyan-300",   dot: "bg-cyan-400",   label: "Holiday"       },
   FUTURE:        { bg:"bg-slate-800/30",  border:"border-slate-700/20",  text:"text-slate-700",  dot:null,            label:""              },
 }
 const STATUS_PILL = {
@@ -288,6 +289,7 @@ const CalendarGrid = ({ year, month, data, loading, onAbsentClick, onLateClick, 
     const regRec    = data?.regularizations?.[dateStr]
     const lateReg   = data?.lateRegularizations?.[dateStr]
     const leaveInfo = data?.leaveDateMap?.[dateStr]
+    const holidayName = data?.holidays?.[dateStr] || null
 
     let status = "FUTURE", leaveStyle = null, leaveLabel = null
 
@@ -301,7 +303,9 @@ const CalendarGrid = ({ year, month, data, loading, onAbsentClick, onLateClick, 
       if      (lateReg?.status === "APPROVED") status = "LATE_APPROVED"
       else if (lateReg?.status === "PENDING")  status = "LATE_PENDING"
       else                                     status = "LATE"
-    } else if (leaveInfo) {
+    } else if (holidayName) {
+        status = "HOLIDAY"
+      } else if (leaveInfo) {
       const ls = LEAVE_STYLES[leaveInfo.status === "PENDING" ? "PENDING" : leaveInfo.type]
       leaveStyle = ls; leaveLabel = ls?.label || "Leave"; status = "LEAVE"
     } else if (isFuture) {
@@ -314,7 +318,7 @@ const CalendarGrid = ({ year, month, data, loading, onAbsentClick, onLateClick, 
       status = "ABSENT"
     }
 
-    cells.push({ d, dateStr, status, attRec, regRec, lateReg, leaveInfo, leaveStyle, leaveLabel, isWeekend, isFuture })
+    cells.push({ d, dateStr, status, attRec, regRec, lateReg, leaveInfo, leaveStyle, leaveLabel, holidayName, isWeekend, isFuture })
   }
 
   if (loading) return (
@@ -352,6 +356,7 @@ const CalendarGrid = ({ year, month, data, loading, onAbsentClick, onLateClick, 
                 : cell.lateReg ? `Late Reg: ${cell.lateReg.status}${cell.lateReg.adminRemark ? " — " + cell.lateReg.adminRemark : ""}`
                 : cell.regRec  ? `${cell.regRec.status}${cell.regRec.adminRemark ? " — " + cell.regRec.adminRemark : ""}`
                 : cell.attRec  ? cell.attRec.status
+                : cell.holidayName ? `Holiday: ${cell.holidayName}`
                 : cell.isWeekend ? "Weekend"
                 : cell.isFuture  ? "Click to apply leave"
                 : "Absent"
@@ -457,6 +462,7 @@ const EmployeeRegularization = () => {
     { label:"LOP (Absent)",     dot:"bg-red-400"     },
     { label:"Leave Pending",    dot:"bg-orange-400"  },
     { label:"Weekend",          dot:"bg-slate-600"   },
+    { label: "Holiday",          dot: "bg-cyan-400"   },
   ]
 
   return (

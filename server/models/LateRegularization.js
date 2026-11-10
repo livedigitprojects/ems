@@ -11,6 +11,9 @@ const lateRegularizationSchema = new mongoose.Schema({
 
 lateRegularizationSchema.index({ employeeId: 1, date: 1 }, { unique: true })
 
+// NEW: fast "pending late regularizations" list
+lateRegularizationSchema.index({ status: 1, createdAt: -1 })
+
 const LateRegularization =
     mongoose.models.LateRegularization ||
     mongoose.model("LateRegularization", lateRegularizationSchema)

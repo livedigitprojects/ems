@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   XIcon, ChevronLeftIcon, ChevronRightIcon, LoaderIcon,
   AlertCircleIcon, EyeIcon, RefreshCwIcon,
 } from "lucide-react"
 import api from "../../api/axios"
 import toast from "react-hot-toast"
+import usePolling from "../../hooks/usePolling"
 import AdminEmployeeRequestsPanel from "./AdminEmployeeRequestsPanel"
 
 const MONTH_NAMES = [
@@ -12,9 +13,9 @@ const MONTH_NAMES = [
   "July","August","September","October","November","December",
 ]
 
-// Polling interval so the admin's read-only view catches up with any check-in,
-// check-out, or regularization decision without needing a manual refresh.
-const POLL_MS = 15000
+// Polling interval so the admin's read-only view catches up with attendance
+// changes. Pauses automatically while the tab is hidden.
+const POLL_MS = 60000
 
 const LEAVE_STYLES = {
   SICK:        { bg: "bg-sky-500/20",    border: "border-sky-500/40",    text: "text-sky-300",    dot: "bg-sky-400",    label: "Sick Leave"    },
@@ -32,6 +33,7 @@ const DAY_STYLES = {
   PENDING:       { bg: "bg-orange-500/15", border: "border-orange-500/35", text: "text-orange-300", dot: "bg-orange-400", label: "Reg. Pending"  },
   APPROVED:      { bg: "bg-green-500/20",  border: "border-green-500/40",  text: "text-green-300",  dot: "bg-green-400",  label: "Reg. Approved" },
   WEEKEND:       { bg: "bg-slate-800/60",  border: "border-slate-700/30",  text: "text-slate-600",  dot: null,            label: "Weekend"       },
+  HOLIDAY:       { bg: "bg-cyan-500/15",   border: "border-cyan-500/35",   text: "text-cyan-300",   dot: "bg-cyan-400",   label: "Holiday"       },
   FUTURE:        { bg: "bg-slate-800/30",  border: "border-slate-700/20",  text: "text-slate-700",  dot: null,            label: ""              },
 }
 
@@ -46,8 +48,6 @@ const AdminAttendanceCalendarModal = ({ employeeId, employeeName, onClose }) => 
   const [data,  setData]  = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-
-  const pollRef = useRef(null)
 
   const load = useCallback(async (y, m, { silent } = {}) => {
     if (silent) setRefreshing(true); else setLoading(true)
@@ -64,17 +64,12 @@ const AdminAttendanceCalendarModal = ({ employeeId, employeeName, onClose }) => 
 
   useEffect(() => { load(year, month) }, [year, month, load])
 
-  // Keep the view fresh in the background while the admin has it open, and
-  // catch up immediately if they switch back to this tab.
-  useEffect(() => {
-    pollRef.current = setInterval(() => load(year, month, { silent: true }), POLL_MS)
-    const onFocus = () => load(year, month, { silent: true })
-    window.addEventListener("focus", onFocus)
-    return () => {
-      clearInterval(pollRef.current)
-      window.removeEventListener("focus", onFocus)
-    }
-  }, [year, month, load])
+  // Keep the view fresh while the admin is looking at it. Pauses when the tab
+  // is hidden and refreshes the moment they switch back.
+  usePolling(() => load(year, month, { silent: true }), {
+    intervalMs: POLL_MS,
+    immediate:  false,
+  })
 
   const prevMonth = () => {
     if (month === 1) { setYear(y => y - 1); setMonth(12) } else setMonth(m => m - 1)
@@ -112,6 +107,7 @@ const AdminAttendanceCalendarModal = ({ employeeId, employeeName, onClose }) => 
       const regRec    = data?.regularizations?.[dateStr]
       const lateReg   = data?.lateRegularizations?.[dateStr]
       const leaveInfo = data?.leaveDateMap?.[dateStr]
+      const holidayName = data?.holidays?.[dateStr] || null
 
       let status = null, leaveStyle = null, leaveLabel = null
 
@@ -123,6 +119,8 @@ const AdminAttendanceCalendarModal = ({ employeeId, employeeName, onClose }) => 
         if      (lateReg?.status === "APPROVED") status = "LATE_APPROVED"
         else if (lateReg?.status === "PENDING")  status = "LATE_PENDING"
         else                                     status = "LATE"
+      } else if (holidayName) {
+        status = "HOLIDAY"
       } else if (leaveInfo) {
         const ls = LEAVE_STYLES[leaveInfo.status === "PENDING" ? "PENDING" : leaveInfo.type]
         leaveStyle = ls; leaveLabel = ls?.label || "Leave"; status = "LEAVE"
@@ -136,7 +134,7 @@ const AdminAttendanceCalendarModal = ({ employeeId, employeeName, onClose }) => 
         status = "ABSENT"
       }
 
-      cells.push({ d, dateStr, status, attRec, regRec, lateReg, leaveInfo, leaveStyle, leaveLabel, isWeekend, isFuture })
+      cells.push({ d, dateStr, status, attRec, regRec, lateReg, leaveInfo, leaveStyle, leaveLabel, holidayName, isWeekend, isFuture })
     }
     return cells
   }
@@ -152,6 +150,7 @@ const AdminAttendanceCalendarModal = ({ employeeId, employeeName, onClose }) => 
     { label: "LOP (Absent)",     dot: "bg-red-400"    },
     { label: "Leave Pending",    dot: "bg-orange-400" },
     { label: "Weekend",          dot: "bg-slate-600"  },
+    { label: "Holiday",          dot: "bg-cyan-400"   },
   ]
 
   return (
@@ -206,6 +205,7 @@ const AdminAttendanceCalendarModal = ({ employeeId, employeeName, onClose }) => 
                         : cell.lateReg ? `Late Reg: ${cell.lateReg.status}`
                         : cell.regRec  ? `Reg: ${cell.regRec.status}`
                         : cell.attRec  ? cell.attRec.status
+                        : cell.holidayName ? `Holiday: ${cell.holidayName}`
                         : cell.isWeekend ? "Weekend"
                         : cell.isFuture  ? "Upcoming"
                         : "Absent"
@@ -234,13 +234,13 @@ const AdminAttendanceCalendarModal = ({ employeeId, employeeName, onClose }) => 
           )}
         </div>
       </div>
-      
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl ml-6 p-2 w-100 max-h-[75vh] overflow-y-auto">
-                <AdminEmployeeRequestsPanel
-                employeeId={employeeId}
-                onActioned={() => load(year, month, { silent: true })}
-              />
-            </div>
+
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl ml-6 p-2 w-100 max-h-[75vh] overflow-y-auto">
+        <AdminEmployeeRequestsPanel
+          employeeId={employeeId}
+          onActioned={() => load(year, month, { silent: true })}
+        />
+      </div>
     </div>
   )
 }
