@@ -28,8 +28,7 @@ app.set("trust proxy", 1)
 const PORT = process.env.PORT || 4000
 
 const allowedOrigins = [
-    "https://ems-snowy-six.vercel.app",
-    "https://ems.livedigit.in",
+    "https://ems-inky-zeta.vercel.app",
     "http://localhost:5173"
 ]
 
